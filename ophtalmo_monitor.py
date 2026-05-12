@@ -1,16 +1,9 @@
 import os
 import smtplib
+import requests
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.support.select import Select
-from webdriver_manager.chrome import ChromeDriverManager
-from selenium.webdriver.chrome.service import Service
-import time
+from bs4 import BeautifulSoup
 
 def send_email(subject, body, email_from, email_password, email_to):
     """Envoie un email via Gmail"""
@@ -41,76 +34,43 @@ def check_rdv():
     url = "https://www.allosante.nc/ophtalmologie/noumea/bougamha-walid"
     
     try:
-        # Configuration de Selenium
-        chrome_options = Options()
-        chrome_options.add_argument("--headless")
-        chrome_options.add_argument("--no-sandbox")
-        chrome_options.add_argument("--disable-dev-shm-usage")
-        chrome_options.add_argument("--disable-gpu")
+        print("🔍 Accès à la page...")
         
-        print("🔍 Démarrage du navigateur...")
-        service = Service(ChromeDriverManager().install())
-        driver = webdriver.Chrome(service=service, options=chrome_options)
+        # Headers pour sembler comme un navigateur
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
         
-        driver.get(url)
-        print("✅ Page chargée")
+        response = requests.get(url, headers=headers, timeout=10)
+        response.raise_for_status()
         
-        # Attendre le chargement
-        time.sleep(3)
+        print("✅ Page récupérée")
         
-        # Sélectionner "Consultation"
-        print("📋 Sélection de 'Consultation'...")
-        try:
-            # Chercher le dropdown du motif
-            selects = driver.find_elements(By.TAG_NAME, "select")
-            consultation_found = False
-            
-            for select_element in selects:
-                try:
-                    select = Select(select_element)
-                    options = [opt.text for opt in select.options]
-                    if "Consultation" in options:
-                        select.select_by_visible_text("Consultation")
-                        consultation_found = True
-                        print("✅ 'Consultation' sélectionné")
-                        break
-                except:
-                    continue
-            
-            if not consultation_found:
-                print("⚠️ 'Consultation' non trouvé")
-                driver.quit()
-                return
-            
-            time.sleep(4)
-        except Exception as e:
-            print(f"⚠️ Erreur lors de la sélection: {e}")
-            driver.quit()
-            return
-        
-        # Chercher les créneaux disponibles
-        print("🔎 Recherche des créneaux...")
+        # Parser la page
+        soup = BeautifulSoup(response.content, 'html.parser')
         
         # Chercher le message "Aucune disponibilité"
-        try:
-            no_availability = driver.find_element(By.XPATH, "//*[contains(text(), 'Aucune disponibilité')]")
-            print("⏳ Aucun créneau disponible")
-        except:
-            # Si pas de message "Aucune disponibilité", chercher les créneaux
-            try:
-                slots = driver.find_elements(By.XPATH, "//button[not(@disabled)]")
-                
-                # Filtrer les slots (éviter les boutons de navigation)
-                slot_times = []
-                for slot in slots:
-                    text = slot.text.strip()
-                    if text and any(char.isdigit() for char in text):  # Contient une heure
+        aucune_dispo = soup.find(string=lambda text: text and "Aucune disponibilité" in text)
+        
+        if aucune_dispo:
+            print("⏳ Aucun créneau disponible pour le moment")
+        else:
+            # Chercher les créneaux (boutons)
+            buttons = soup.find_all('button')
+            
+            slot_times = []
+            for button in buttons:
+                text = button.get_text(strip=True)
+                # Chercher les heures (format XX:XX)
+                if ':' in text and any(char.isdigit() for char in text):
+                    if text not in slot_times:  # Éviter les doublons
                         slot_times.append(text)
+            
+            if slot_times and len(slot_times) > 0:
+                print(f"✅ {len(slot_times)} créneau(x) trouvé(s) !")
+                print(f"Créneaux: {slot_times}")
                 
-                if slot_times:
-                    print(f"✅ {len(slot_times)} créneau(x) trouvé(s) !")
-                    
-                    message = f"""Bonjour,
+                message = f"""Bonjour,
 
 Des créneaux sont disponibles chez l'ophtalmologue ! 🎉
 
@@ -121,22 +81,23 @@ Va vite les réserver sur:
 {url}
 
 Bonne chance!"""
-                    
-                    send_email(
-                        subject="🎉 Des RDV sont disponibles chez l'ophtalmologue !",
-                        body=message,
-                        email_from=email_from,
-                        email_password=email_password,
-                        email_to=email_to
-                    )
-                else:
-                    print("⏳ Aucun créneau détecté")
-            except Exception as e:
-                print(f"⚠️ Erreur lors de la recherche: {e}")
+                
+                send_email(
+                    subject="🎉 Des RDV sont disponibles chez l'ophtalmologue !",
+                    body=message,
+                    email_from=email_from,
+                    email_password=email_password,
+                    email_to=email_to
+                )
+            else:
+                print("⏳ Aucun créneau détecté")
         
-        driver.quit()
         print("✅ Vérification terminée")
         
+    except requests.exceptions.Timeout:
+        print("❌ Timeout - le serveur met trop de temps à répondre")
+    except requests.exceptions.RequestException as e:
+        print(f"❌ Erreur réseau: {e}")
     except Exception as e:
         print(f"❌ Erreur générale: {e}")
         import traceback
