@@ -1,7 +1,6 @@
 name: Monitor RDV Ophtalmologie
 
 on:
-on:
   schedule:
     - cron: '*/15 * * * *'  # Toutes les 15 minutes
   workflow_dispatch:
