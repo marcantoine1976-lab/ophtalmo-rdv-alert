@@ -2,16 +2,16 @@ name: Monitor RDV Ophtalmologie
 
 on:
   schedule:
-    # Tous les jours à 8h UTC (10h heure de Nouvelle-Calédonie en hiver)
-    - cron: '0 8 * * *'
-  workflow_dispatch:  # Permet de lancer manuellement
+    # Toutes les heures
+    - cron: '0 * * * *'
+  workflow_dispatch:
 
 jobs:
   check-rdv:
     runs-on: ubuntu-latest
     
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     
     - name: Set up Python
       uses: actions/setup-python@v4
@@ -22,11 +22,6 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install selenium webdriver-manager
-    
-    - name: Install Chrome
-      run: |
-        apt-get update
-        apt-get install -y chromium-browser chromium-chromedriver
     
     - name: Run monitoring script
       env:
